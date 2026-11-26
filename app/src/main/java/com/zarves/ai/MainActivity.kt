@@ -117,10 +117,14 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
             override fun onRmsChanged(v: Float) {}
             override fun onBufferReceived(b: ByteArray?) {}
             override fun onEndOfSpeech() {}
-            override fun onError(e: Int) { info.text = "Dobara koshish karein" }
+            override fun onError(e: Int) {
+                info.text = "Command nahi suna. Dobara ZARVES boliye."
+                sendBroadcast(Intent(WakeWordService.ACTION_COMMAND_DONE).setPackage(packageName))
+            }
             override fun onResults(b: Bundle?) {
                 val q = b?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull().orEmpty()
                 runCommand(q)
+                sendBroadcast(Intent(WakeWordService.ACTION_COMMAND_DONE).setPackage(packageName))
             }
             override fun onPartialResults(b: Bundle?) {}
             override fun onEvent(t: Int, b: Bundle?) {}
