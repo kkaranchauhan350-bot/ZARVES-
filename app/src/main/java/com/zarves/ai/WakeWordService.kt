@@ -6,6 +6,9 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
 import android.content.Intent
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.IntentFilter
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
@@ -22,6 +25,11 @@ class WakeWordService : Service() {
     private var active = false
     private var cpuLock: PowerManager.WakeLock? = null
     private val channelId = "zarves_wake_word"
+    private val commandDoneReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (active) restartSoon()
+        }
+    }
 
     override fun onCreate() {
         super.onCreate()
@@ -30,6 +38,9 @@ class WakeWordService : Service() {
         cpuLock = power.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "ZARVES:WakeWord").apply {
             setReferenceCounted(false)
         }
+        val filter = IntentFilter(ACTION_COMMAND_DONE)
+        if (Build.VERSION.SDK_INT >= 33) registerReceiver(commandDoneReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
+        else @Suppress("DEPRECATION") registerReceiver(commandDoneReceiver, filter)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -81,9 +92,12 @@ class WakeWordService : Service() {
                 val heard = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
                     ?.firstOrNull().orEmpty()
                 if (heard.contains("zarves", ignoreCase = true) || heard.contains("जार्विस")) {
+                    // Pause wake-word recognition while the user speaks the actual command.
+                    recognizer?.cancel()
                     sendBroadcast(Intent(ACTION_WAKE).setPackage(packageName).putExtra("heard", heard))
+                } else {
+                    restartSoon()
                 }
-                restartSoon()
             }
             override fun onPartialResults(partialResults: Bundle?) {}
             override fun onEvent(eventType: Int, params: Bundle?) {}
@@ -109,6 +123,7 @@ class WakeWordService : Service() {
         handler.removeCallbacksAndMessages(null)
         recognizer?.destroy()
         recognizer = null
+        try { unregisterReceiver(commandDoneReceiver) } catch (_: Exception) {}
         if (cpuLock?.isHeld == true) cpuLock?.release()
         cpuLock = null
         super.onDestroy()
@@ -118,5 +133,6 @@ class WakeWordService : Service() {
 
     companion object {
         const val ACTION_WAKE = "com.zarves.ai.ACTION_WAKE"
+        const val ACTION_COMMAND_DONE = "com.zarves.ai.ACTION_COMMAND_DONE"
     }
 }
