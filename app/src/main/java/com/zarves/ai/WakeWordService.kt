@@ -11,6 +11,7 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
+import android.os.PowerManager
 import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
@@ -19,18 +20,24 @@ class WakeWordService : Service() {
     private var recognizer: SpeechRecognizer? = null
     private val handler = Handler(Looper.getMainLooper())
     private var active = false
+    private var cpuLock: PowerManager.WakeLock? = null
     private val channelId = "zarves_wake_word"
 
     override fun onCreate() {
         super.onCreate()
         createChannel()
+        val power = getSystemService(POWER_SERVICE) as PowerManager
+        cpuLock = power.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "ZARVES:WakeWord").apply {
+            setReferenceCounted(false)
+        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         startForeground(41, buildNotification())
         active = true
+        if (cpuLock?.isHeld != true) cpuLock?.acquire()
         startRecognition()
-        return START_NOT_STICKY
+        return START_STICKY
     }
 
     private fun createChannel() {
@@ -102,6 +109,8 @@ class WakeWordService : Service() {
         handler.removeCallbacksAndMessages(null)
         recognizer?.destroy()
         recognizer = null
+        if (cpuLock?.isHeld == true) cpuLock?.release()
+        cpuLock = null
         super.onDestroy()
     }
 
