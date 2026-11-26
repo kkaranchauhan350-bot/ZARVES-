@@ -133,36 +133,36 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
 
     private fun runCommand(raw: String) {
         val q = raw.lowercase(Locale.ROOT)
-        val packageName = when {
-            "youtube" in q -> "com.google.android.youtube"
-            "whatsapp" in q -> "com.whatsapp"
-            "chrome" in q || "browser" in q || "ब्राउज़र" in q -> "com.android.chrome"
-            "maps" in q || "map" in q || "मैप" in q -> "com.google.android.apps.maps"
-            "camera" in q || "कैमरा" in q -> "com.motorola.camera3"
-            else -> null
+        fun openPackage(pkg: String, label: String): Boolean {
+            val launch = packageManager.getLaunchIntentForPackage(pkg) ?: return false
+            startActivity(launch)
+            reply("$label khol raha hoon.")
+            return true
         }
-        if (packageName != null) {
-            val launch = packageManager.getLaunchIntentForPackage(packageName)
-            if (launch != null) {
-                startActivity(launch)
-                reply("Theek hai, app khol raha hoon.")
-            } else reply("Yeh app phone mein install nahi hai.")
-            return
+        when {
+            "youtube" in q -> { if (!openPackage("com.google.android.youtube", "YouTube")) reply("YouTube install nahi hai."); return }
+            "whatsapp" in q -> { if (!openPackage("com.whatsapp", "WhatsApp")) reply("WhatsApp install nahi hai."); return }
+            "chrome" in q || "browser" in q || "ब्राउज़र" in q -> { if (!openPackage("com.android.chrome", "Chrome")) startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse("https://www.google.com"))); return }
+            "maps" in q || "map" in q || "मैप" in q -> { if (!openPackage("com.google.android.apps.maps", "Google Maps")) reply("Maps app nahi mili."); return }
+            "camera" in q || "कैमरा" in q -> { if (!openPackage("com.motorola.camera3", "Camera")) { try { startActivity(Intent("android.media.action.IMAGE_CAPTURE")) } catch (_: Exception) { reply("Camera nahi khul paya.") } }; return }
+            "phone" in q || "call" in q || "फोन" in q || "कॉल" in q -> { startActivity(Intent(Intent.ACTION_DIAL)); reply("Phone dialer khol raha hoon. Number aap khud confirm karein."); return }
+            "message" in q || "sms" in q || "मैसेज" in q -> { startActivity(Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_APP_MESSAGING)); reply("Messages khol raha hoon."); return }
+            "contact" in q || "कॉन्टैक्ट" in q -> { startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse("content://contacts/people/"))); reply("Contacts khol raha hoon."); return }
+            "alarm" in q || "अलार्म" in q -> { try { startActivity(Intent("android.intent.action.SHOW_ALARMS")) } catch (_: Exception) { reply("Alarm app nahi khul payi.") }; return }
+            "calendar" in q || "कैलेंडर" in q -> { try { startActivity(Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_APP_CALENDAR)) } catch (_: Exception) { reply("Calendar app nahi khul payi.") }; return }
         }
         when {
             "setting" in q || "सेटिंग" in q -> {
-                startActivity(Intent(Settings.ACTION_SETTINGS))
-                reply("Settings khol raha hoon.")
+                startActivity(Intent(Settings.ACTION_SETTINGS)); reply("Settings khol raha hoon.")
             }
             "wifi" in q || "वाईफाई" in q -> {
-                startActivity(Intent(Settings.ACTION_WIFI_SETTINGS))
-                reply("Wi-Fi settings khol raha hoon.")
+                startActivity(Intent(Settings.ACTION_WIFI_SETTINGS)); reply("Wi-Fi settings khol raha hoon.")
             }
             "bluetooth" in q || "ब्लूटूथ" in q -> {
-                startActivity(Intent(Settings.ACTION_BLUETOOTH_SETTINGS))
-                reply("Bluetooth settings khol raha hoon.")
+                startActivity(Intent(Settings.ACTION_BLUETOOTH_SETTINGS)); reply("Bluetooth settings khol raha hoon.")
             }
             "time" in q || "समय" in q -> reply("Abhi phone ka time ${java.text.SimpleDateFormat("hh:mm a", Locale.getDefault()).format(java.util.Date())} hai.")
+            "help" in q || "मदद" in q || "क्या कर सकते" in q -> reply("Main YouTube, WhatsApp, Chrome, Maps, Camera, Phone dialer, Messages, Contacts, Alarm, Calendar, Wi-Fi, Bluetooth aur Settings khol sakta hoon. Samay bhi bata sakta hoon.")
             else -> reply("Aapne kaha: $raw. Is command ko abhi nahi pehchana.")
         }
     }
