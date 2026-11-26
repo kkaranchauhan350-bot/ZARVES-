@@ -95,6 +95,8 @@ class WakeWordService : Service() {
                     // Pause wake-word recognition while the user speaks the actual command.
                     recognizer?.cancel()
                     sendBroadcast(Intent(ACTION_WAKE).setPackage(packageName).putExtra("heard", heard))
+                    // If Android does not deliver the app broadcast in background, resume after timeout.
+                    handler.postDelayed({ if (active) startRecognition() }, 20000)
                 } else {
                     restartSoon()
                 }
