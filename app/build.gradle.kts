@@ -13,6 +13,7 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
+    dependencies { implementation("com.github.k2-fsa.sherpa-onnx:sherpa-onnx:v1.13.5") }
     kotlinOptions {
         jvmTarget = "17"
     }
