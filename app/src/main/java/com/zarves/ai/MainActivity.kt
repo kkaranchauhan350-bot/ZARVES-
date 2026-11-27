@@ -22,17 +22,18 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
     private lateinit var speech: TextToSpeech
     private var recognizer: SpeechRecognizer? = null
     private var wakeReceiverRegistered = false
+    private lateinit var speakerVerifier: SpeakerVerifier
 
     private val wakeReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
-            info.text = "ZARVES sun raha hai. Ab apna command boliye."
-            listenOnce()
+            verifyVoiceThenListen()
         }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         speech = TextToSpeech(this, this)
+        speakerVerifier = SpeakerVerifier(this)
         val box = LinearLayout(this).apply {
             orientation = 1
             gravity = Gravity.CENTER
@@ -51,8 +52,12 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         }
         box.addView(info)
         box.addView(Button(this).apply {
+            text = "Meri Awaaz Save Karein"
+            setOnClickListener { enrollVoice() }
+        })
+        box.addView(Button(this).apply {
             text = "Baat karein"
-            setOnClickListener { listenOnce() }
+            setOnClickListener { verifyVoiceThenListen() }
         })
         box.addView(Button(this).apply {
             text = "Wake word ON (ZARVES)"
@@ -96,12 +101,61 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
             info.text = "Microphone permission dein, phir Wake word ON dabayein."
             return
         }
+        if (!speakerVerifier.hasEnrollment()) {
+            info.text = "Pehle 'Meri Awaaz Save Karein' dabakar apni awaaz register karein."
+            return
+        }
         try {
             startForegroundService(Intent(this, WakeWordService::class.java))
             info.text = "Wake word chalu. ZARVES bolkar bulayein. Notification dikhega."
         } catch (e: Exception) {
             info.text = "Wake word start nahi hua: ${e.message}"
         }
+    }
+
+
+    private fun enrollVoice() {
+        if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO), 7)
+            info.text = "Pehle microphone permission dein."
+            return
+        }
+        info.text = "6 second tak saaf awaaz mein boliye. Shor se door rahein."
+        Thread {
+            try {
+                speakerVerifier.enroll()
+                runOnUiThread { info.text = "Aapki awaaz phone mein save ho gayi. Ab Wake word ON karein." }
+            } catch (e: Exception) {
+                runOnUiThread { info.text = "Awaaz save nahi hui: " + e.message }
+            }
+        }.start()
+    }
+
+    private fun verifyVoiceThenListen() {
+        if (!speakerVerifier.hasEnrollment()) {
+            info.text = "Pehle Meri Awaaz Save Karein dabayein."
+            return
+        }
+        info.text = "Awaaz pehchan raha hoon. 4 second boliye..."
+        Thread {
+            try {
+                val matched = speakerVerifier.verify()
+                runOnUiThread {
+                    if (matched) {
+                        info.text = "Awaaz pehchan li. Ab apna command boliye."
+                        listenOnce()
+                    } else {
+                        info.text = "Awaaz match nahi hui. Command nahi chalega."
+                        sendBroadcast(Intent(WakeWordService.ACTION_COMMAND_DONE).setPackage(packageName))
+                    }
+                }
+            } catch (e: Exception) {
+                runOnUiThread {
+                    info.text = "Voice verification fail: " + e.message
+                    sendBroadcast(Intent(WakeWordService.ACTION_COMMAND_DONE).setPackage(packageName))
+                }
+            }
+        }.start()
     }
 
     private fun listenOnce() {
