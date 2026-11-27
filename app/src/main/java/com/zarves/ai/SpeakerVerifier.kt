@@ -62,12 +62,13 @@ class SpeakerVerifier(private val context: Context) {
     }
 
     private fun embedding(audio: FloatArray): FloatArray {
-        val config = SpeakerEmbeddingExtractorConfig.builder()
-            .setModel(modelPath())
-            .setNumThreads(2)
-            .setDebug(false)
-            .build()
-        val extractor = SpeakerEmbeddingExtractor(config)
+        val config = SpeakerEmbeddingExtractorConfig(
+            model = modelPath(),
+            numThreads = 2,
+            debug = false,
+            provider = "cpu"
+        )
+        val extractor = SpeakerEmbeddingExtractor(config = config)
         try {
             val stream = extractor.createStream()
             try {
