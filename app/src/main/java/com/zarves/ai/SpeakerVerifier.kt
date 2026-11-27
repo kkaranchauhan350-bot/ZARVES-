@@ -31,6 +31,17 @@ class SpeakerVerifier(private val context: Context) {
         val target = File(context.filesDir, MODEL_NAME)
         if (target.exists() && target.length() > 1_000_000L) return target.absolutePath
 
+        // The CI build packages the official model in assets; copy it locally on first use.
+        try {
+            context.assets.open(MODEL_NAME).use { input ->
+                target.outputStream().buffered().use { output -> input.copyTo(output) }
+            }
+            if (target.length() > 1_000_000L) return target.absolutePath
+            target.delete()
+        } catch (_: java.io.IOException) {
+            // Older builds may not contain the model; download it below.
+        }
+
         val temp = File(context.filesDir, "$MODEL_NAME.part")
         val connection = (URL(MODEL_URL).openConnection() as HttpURLConnection).apply {
             connectTimeout = 20000
