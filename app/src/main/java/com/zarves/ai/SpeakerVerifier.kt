@@ -7,10 +7,13 @@ import android.media.MediaRecorder
 import com.k2fsa.sherpa.onnx.SpeakerEmbeddingExtractor
 import com.k2fsa.sherpa.onnx.SpeakerEmbeddingExtractorConfig
 import com.k2fsa.sherpa.onnx.SpeakerEmbeddingManager
+import java.io.File
+import java.net.HttpURLConnection
+import java.net.URL
 
 /**
  * Local speaker embedding enrollment and verification.
- * The enrolled embedding is stored only in app-private preferences.
+ * The model and enrolled embedding stay in app-private storage.
  */
 class SpeakerVerifier(private val context: Context) {
     companion object {
@@ -18,31 +21,54 @@ class SpeakerVerifier(private val context: Context) {
         private const val KEY_EMBEDDING = "owner_embedding"
         private const val SAMPLE_RATE = 16000
         private const val THRESHOLD = 0.60f
+        private const val MODEL_NAME = "speaker.onnx"
+        private const val MODEL_URL =
+            "https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-recongition-models/3dspeaker_speech_eres2net_base_sv_zh-cn_3dspeaker_16k.onnx"
     }
 
+    @Synchronized
     private fun modelPath(): String {
-        val target = java.io.File(context.filesDir, "speaker.onnx")
-        if (!target.exists()) {
-            context.assets.open("speaker.onnx").use { input ->
-                target.outputStream().use { output -> input.copyTo(output) }
-            }
+        val target = File(context.filesDir, MODEL_NAME)
+        if (target.exists() && target.length() > 1_000_000L) return target.absolutePath
+
+        val temp = File(context.filesDir, "$MODEL_NAME.part")
+        val connection = (URL(MODEL_URL).openConnection() as HttpURLConnection).apply {
+            connectTimeout = 20000
+            readTimeout = 60000
+            instanceFollowRedirects = true
+            requestMethod = "GET"
         }
-        return target.absolutePath
+        try {
+            connection.connect()
+            if (connection.responseCode !in 200..299) {
+                throw IllegalStateException("Voice model download failed: HTTP ${connection.responseCode}")
+            }
+            connection.inputStream.use { input ->
+                temp.outputStream().buffered().use { output -> input.copyTo(output) }
+            }
+            if (temp.length() < 1_000_000L) {
+                temp.delete()
+                throw IllegalStateException("Voice model adhura download hua. Internet check karein.")
+            }
+            if (target.exists()) target.delete()
+            if (!temp.renameTo(target)) {
+                temp.copyTo(target, overwrite = true)
+                temp.delete()
+            }
+            return target.absolutePath
+        } finally {
+            connection.disconnect()
+        }
     }
 
     private fun record(seconds: Int): FloatArray {
         val minBuffer = AudioRecord.getMinBufferSize(
-            SAMPLE_RATE,
-            AudioFormat.CHANNEL_IN_MONO,
-            AudioFormat.ENCODING_PCM_16BIT
+            SAMPLE_RATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT
         )
         require(minBuffer > 0) { "Microphone is not available" }
         val recorder = AudioRecord(
-            MediaRecorder.AudioSource.MIC,
-            SAMPLE_RATE,
-            AudioFormat.CHANNEL_IN_MONO,
-            AudioFormat.ENCODING_PCM_16BIT,
-            maxOf(minBuffer, SAMPLE_RATE * 2)
+            MediaRecorder.AudioSource.MIC, SAMPLE_RATE, AudioFormat.CHANNEL_IN_MONO,
+            AudioFormat.ENCODING_PCM_16BIT, maxOf(minBuffer, SAMPLE_RATE * 2)
         )
         require(recorder.state == AudioRecord.STATE_INITIALIZED) { "Microphone could not start" }
         val samples = ShortArray(SAMPLE_RATE * seconds)
@@ -52,6 +78,7 @@ class SpeakerVerifier(private val context: Context) {
             while (offset < samples.size) {
                 val count = recorder.read(samples, offset, samples.size - offset)
                 if (count < 0) throw IllegalStateException("Microphone recording failed")
+                if (count == 0) continue
                 offset += count
             }
         } finally {
@@ -62,13 +89,11 @@ class SpeakerVerifier(private val context: Context) {
     }
 
     private fun embedding(audio: FloatArray): FloatArray {
-        val config = SpeakerEmbeddingExtractorConfig(
-            model = modelPath(),
-            numThreads = 2,
-            debug = false,
-            provider = "cpu"
+        val extractor = SpeakerEmbeddingExtractor(
+            config = SpeakerEmbeddingExtractorConfig(
+                model = modelPath(), numThreads = 2, debug = false, provider = "cpu"
+            )
         )
-        val extractor = SpeakerEmbeddingExtractor(config = config)
         try {
             val stream = extractor.createStream()
             try {
@@ -85,10 +110,10 @@ class SpeakerVerifier(private val context: Context) {
 
     fun enroll(): Boolean {
         val vector = embedding(record(6))
-        val encoded = vector.joinToString(",")
+        require(vector.isNotEmpty()) { "Awaaz ka sample nahi mila. Dobara koshish karein." }
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .edit().putString(KEY_EMBEDDING, encoded).apply()
-        return vector.isNotEmpty()
+            .edit().putString(KEY_EMBEDDING, vector.joinToString(",")).apply()
+        return true
     }
 
     fun hasEnrollment(): Boolean =
